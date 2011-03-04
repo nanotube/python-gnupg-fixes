@@ -428,6 +428,27 @@ class GPG(object):
         data.close()
         return result
 
+    def recv_keys(self, keyserver, *keyids):
+        """Import a key from a keyserver
+
+        >>> import shutil
+        >>> shutil.rmtree("keys")
+        >>> gpg = GPG(gnupghome="keys")
+        >>> result = gpg.recv_key('pgp.mit.edu', '3FF0DB166A7476EA')
+        >>> assert result
+
+        """
+        result = ImportResult()
+        logger.debug('recv_keys: %r', keyids)
+        data = _make_binary_stream("", self.encoding)
+        #data = ""
+        args = ['--keyserver', keyserver, '--recv-keys']
+        args.extend(keyids)
+        self._handle_io(args, data, result, binary=True)
+        logger.debug('recv_keys result: %r', result.__dict__)
+        data.close()
+        return result
+
     def delete_keys(self, fingerprints, secret=False):
         which='key'
         if secret:
