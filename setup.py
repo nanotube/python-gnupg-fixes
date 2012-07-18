@@ -1,20 +1,22 @@
 from distutils.core import setup
 
+from gnupg import __version__ as version
+
 setup(name = "python-gnupg",
     description="A wrapper for the Gnu Privacy Guard (GPG or GnuPG)",
     long_description = "This module allows easy access to GnuPG's key \
 management, encryption and signature functionality from Python programs. \
 It is intended for use with Python 2.4 or greater.",
-    license="""Copyright (C) 2008-2011 by Vinay Sajip. All Rights Reserved. See LICENSE for license.""",
-    version = "0.2.8",
-    author = "Vinay Sajip",
-    author_email = "vinay_sajip@red-dove.com",
-    maintainer = "Vinay Sajip",
-    maintainer_email = "vinay_sajip@red-dove.com",
-    url = "http://www.red-dove.com/python_gnupg.html",
-    py_modules = ["gnupg"],
-    platforms = "No particular restrictions",
-    classifiers = [
+    license="""Copyright (C) 2008-2012 by Vinay Sajip. All Rights Reserved. See LICENSE for license.""",
+    version=version,
+    author="Vinay Sajip",
+    author_email="vinay_sajip@red-dove.com",
+    maintainer="Vinay Sajip",
+    maintainer_email="vinay_sajip@red-dove.com",
+    url="http://www.red-dove.com/python_gnupg.html",
+    py_modules=["gnupg"],
+    platforms="No particular restrictions",
+    classifiers=[
         'Development Status :: 5 - Production/Stable',
         "Intended Audience :: Developers",
         'License :: OSI Approved :: BSD License',

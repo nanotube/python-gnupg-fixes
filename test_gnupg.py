@@ -2,7 +2,7 @@
 """
 A test harness for gnupg.py.
 
-Copyright (C) 2008-2011 Vinay Sajip. All rights reserved.
+Copyright (C) 2008-2012 Vinay Sajip. All rights reserved.
 """
 import doctest
 import logging
@@ -253,6 +253,10 @@ class GPGTestCase(unittest.TestCase):
             logger.debug("ver: %r", verified.fingerprint)
         self.assertEqual(key.fingerprint, verified.fingerprint,
                          "Fingerprints must match")
+        if not os.path.exists('random_binary_data'):
+            data_file = open('random_binary_data', 'wb')
+            data_file.write(os.urandom(5120 * 1024))
+            data_file.close()
         data_file = open('random_binary_data', 'rb')
         sig = self.gpg.sign_file(data_file, keyid=key.fingerprint,
                                  passphrase='aable')

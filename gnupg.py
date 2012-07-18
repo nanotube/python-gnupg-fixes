@@ -27,14 +27,15 @@ Vinay Sajip to make use of the subprocess module (Steve's version uses os.fork()
 and so does not work on Windows). Renamed to gnupg.py to avoid confusion with
 the previous versions.
 
-Modifications Copyright (C) 2008-2011 Vinay Sajip. All rights reserved.
+Modifications Copyright (C) 2008-2012 Vinay Sajip. All rights reserved.
 
 A unittest harness (test_gnupg.py) has also been added.
 """
 import locale
 
+__version__ = "0.2.9"
 __author__ = "Vinay Sajip"
-__date__  = "$02-Sep-2011 13:18:12$"
+__date__  = "$29-Mar-2012 21:12:58$"
 
 try:
     from io import StringIO
@@ -143,7 +144,8 @@ class Verify(object):
     def handle_status(self, key, value):
         if key in ("TRUST_UNDEFINED", "TRUST_NEVER", "TRUST_MARGINAL",
                    "TRUST_FULLY", "TRUST_ULTIMATE", "RSA_OR_IDEA", "NODATA",
-                   "IMPORT_RES", "PLAINTEXT", "PLAINTEXT_LENGTH"):
+                   "IMPORT_RES", "PLAINTEXT", "PLAINTEXT_LENGTH",
+                   "POLICY_URL", "DECRYPTION_INFO", "DECRYPTION_OKAY"):
             pass
         elif key == "BADSIG":
             self.valid = False
@@ -171,6 +173,10 @@ class Verify(object):
              cls,
              self.timestamp) = value.split()[:5]
             self.status = 'signature error'
+        elif key == "DECRYPTION_FAILED":
+            self.valid = False
+            self.key_id = value
+            self.status = 'decryption failed'
         elif key == "NO_PUBKEY":
             self.valid = False
             self.key_id = value
@@ -341,7 +347,8 @@ class Crypt(Verify):
 
     def handle_status(self, key, value):
         if key in ("ENC_TO", "USERID_HINT", "GOODMDC", "END_DECRYPTION",
-                   "BEGIN_SIGNING", "NO_SECKEY", "ERROR", "NODATA"):
+                   "BEGIN_SIGNING", "NO_SECKEY", "ERROR", "NODATA",
+                   "CARDCTRL"):
             # in the case of ERROR, this is because a more specific error
             # message will have come first
             pass
@@ -435,7 +442,7 @@ class Sign(object):
 
     def handle_status(self, key, value):
         if key in ("USERID_HINT", "NEED_PASSPHRASE", "BAD_PASSPHRASE",
-                   "GOOD_PASSPHRASE", "BEGIN_SIGNING"):
+                   "GOOD_PASSPHRASE", "BEGIN_SIGNING", "CARDCTRL"):
             pass
         elif key == "SIG_CREATED":
             (self.type,
