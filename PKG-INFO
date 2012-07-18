@@ -1,6 +1,6 @@
 Metadata-Version: 1.0
 Name: python-gnupg
-Version: 0.2.9
+Version: 0.3.0
 Summary: A wrapper for the Gnu Privacy Guard (GPG or GnuPG)
 Home-page: http://www.red-dove.com/python_gnupg.html
 Author: Vinay Sajip
