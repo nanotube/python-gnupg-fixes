@@ -158,38 +158,45 @@ class GPGTestCase(unittest.TestCase):
         andrew = key.fingerprint
         key = self.generate_key("Barbara", "Brown", "beta.com")
         barbara = key.fingerprint
+        gpg = self.gpg
         if gnupg._py3k:
             data = 'Hello, André!'
         else:
-            data = unicode('Hello, André', self.gpg.encoding)
-        data = data.encode(self.gpg.encoding)
-        edata = str(self.gpg.encrypt(data, barbara))
+            data = unicode('Hello, André', gpg.encoding)
+        data = data.encode(gpg.encoding)
+        edata = str(gpg.encrypt(data, barbara))
         self.assertNotEqual(data, edata, "Data must have changed")
-        ddata = self.gpg.decrypt(edata, passphrase="bbrown")
+        ddata = gpg.decrypt(edata, passphrase="bbrown")
         if data != ddata.data:
             logger.debug("was: %r", data)
             logger.debug("new: %r", ddata.data)
         self.assertEqual(data, ddata.data, "Round-trip must work")
-        edata = str(self.gpg.encrypt(data, [andrew, barbara]))
+        edata = str(gpg.encrypt(data, [andrew, barbara]))
         self.assertNotEqual(data, edata, "Data must have changed")
-        ddata = self.gpg.decrypt(edata, passphrase="andy")
+        ddata = gpg.decrypt(edata, passphrase="andy")
         self.assertEqual(data, ddata.data, "Round-trip must work")
-        ddata = self.gpg.decrypt(edata, passphrase="bbrown")
+        ddata = gpg.decrypt(edata, passphrase="bbrown")
         self.assertEqual(data, ddata.data, "Round-trip must work")
         logger.debug("test_encryption_and_decryption ends")
+        # Test symmetric encryption
+        data = "chippy was here"
+        edata = str(gpg.encrypt(data, None, passphrase='bbrown', symmetric=True))
+        ddata = gpg.decrypt(edata, passphrase='bbrown')
+        self.assertEqual(data, str(ddata))
 
     def test_import_and_export(self):
         "Test that key import and export works"
         logger.debug("test_import_and_export begins")
         self.test_list_keys_initial()
-        self.gpg.import_keys(KEYS_TO_IMPORT)
-        public_keys = self.gpg.list_keys()
+        gpg = self.gpg
+        gpg.import_keys(KEYS_TO_IMPORT)
+        public_keys = gpg.list_keys()
         self.assertTrue(is_list_with_len(public_keys, 2),
                         "2-element list expected")
-        private_keys = self.gpg.list_keys(secret=True)
+        private_keys = gpg.list_keys(secret=True)
         self.assertTrue(is_list_with_len(private_keys, 0),
                         "Empty list expected")
-        ascii = self.gpg.export_keys([k['keyid'] for k in public_keys])
+        ascii = gpg.export_keys([k['keyid'] for k in public_keys])
         self.assertTrue(ascii.find("PGP PUBLIC KEY BLOCK") >= 0,
                         "Exported key should be public")
         ascii = ascii.replace("\r", "").strip()
@@ -200,7 +207,7 @@ class GPGTestCase(unittest.TestCase):
         self.assertEqual(0, match, "Keys must match")
         #Generate a key so we can test exporting private keys
         key = self.do_key_generation()
-        ascii = self.gpg.export_keys(key.fingerprint, True)
+        ascii = gpg.export_keys(key.fingerprint, True)
         self.assertTrue(ascii.find("PGP PRIVATE KEY BLOCK") >= 0,
                         "Exported key should be private")
         logger.debug("test_import_and_export ends")

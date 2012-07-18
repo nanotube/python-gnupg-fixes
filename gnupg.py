@@ -34,18 +34,14 @@ A unittest harness (test_gnupg.py) has also been added.
 import locale
 
 __author__ = "Vinay Sajip"
-__date__  = "$25-Jan-2011 11:40:48$"
+__date__  = "$10-Apr-2011 11:40:48$"
 
 try:
     from io import StringIO
-    from io import TextIOWrapper
-    from io import BufferedReader
-    from io import BufferedWriter
 except ImportError:
     from cStringIO import StringIO
-    class BufferedReader: pass
-    class BufferedWriter: pass
 
+import codecs
 import locale
 import logging
 import os
@@ -115,29 +111,6 @@ def _write_passphrase(stream, passphrase, encoding):
 def _is_sequence(instance):
     return isinstance(instance,list) or isinstance(instance,tuple)
 
-def _wrap_input(inp):
-    if isinstance(inp, BufferedWriter):
-        oldinp = inp
-        inp = TextIOWrapper(inp)
-        logger.debug('wrapped input: %r -> %r', oldinp, inp)
-    return inp
-
-def _wrap_output(outp):
-    if isinstance(outp, BufferedReader):
-        oldoutp = outp
-        outp = TextIOWrapper(outp)
-        logger.debug('wrapped output: %r -> %r', oldoutp, outp)
-    return outp
-
-#The following is needed for Python2.7 :-(
-def _make_file(s):
-    try:
-        rv = StringIO(s)
-    except (TypeError, UnicodeError):
-        from io import BytesIO
-        rv = BytesIO(s)
-    return rv
-
 def _make_binary_stream(s, encoding):
     try:
         if _py3k:
@@ -154,16 +127,20 @@ def _make_binary_stream(s, encoding):
 
 class GPG(object):
     "Encapsulate access to the gpg executable"
-    def __init__(self, gpgbinary='gpg', gnupghome=None, verbose=False, use_agent=False):
+    def __init__(self, gpgbinary='gpg', gnupghome=None, verbose=False,
+                 use_agent=False, keyring=None):
         """Initialize a GPG process wrapper.  Options are:
 
         gpgbinary -- full pathname for GPG binary.
 
         gnupghome -- full pathname to where we can find the public and
         private keyrings.  Default is whatever gpg defaults to.
+        keyring -- name of alternative keyring file to use. If specified,
+        the default keyring is not used.
         """
         self.gpgbinary = gpgbinary
         self.gnupghome = gnupghome
+        self.keyring = keyring
         self.verbose = verbose
         self.use_agent = use_agent
         self.encoding = locale.getpreferredencoding()
@@ -184,6 +161,8 @@ class GPG(object):
         cmd = [self.gpgbinary, '--status-fd 2 --no-tty']
         if self.gnupghome:
             cmd.append('--homedir "%s" ' % self.gnupghome)
+        if self.keyring:
+            cmd.append('--no-default-keyring --keyring "%s" ' % self.keyring)
         if passphrase:
             cmd.append('--batch --passphrase-fd 0')
         if self.use_agent:
@@ -196,7 +175,7 @@ class GPG(object):
         return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
     def _read_response(self, stream, result):
-        # Internal method: reads all the output from GPG, taking notice
+        # Internal method: reads all the stderr output from GPG, taking notice
         # only of lines that begin with the magic [GNUPG:] prefix.
         #
         # Calls methods on the response object for each valid token found,
@@ -204,12 +183,13 @@ class GPG(object):
         lines = []
         while True:
             line = stream.readline()
+            if len(line) == 0:
+                break
             lines.append(line)
+            line = line.rstrip()
             if self.verbose:
                 print(line)
-            logger.debug("%s", line.rstrip())
-            if line == "": break
-            line = line.rstrip()
+            logger.debug("%s", line)
             if line[0:9] == '[GNUPG:] ':
                 # Chop off the prefix
                 line = line[9:]
@@ -244,13 +224,13 @@ class GPG(object):
         make sure it's joined before returning. If a stdin stream is given,
         close it before returning.
         """
-        stderr = _wrap_output(process.stderr)
+        stderr = codecs.getreader(self.encoding)(process.stderr)
         rr = threading.Thread(target=self._read_response, args=(stderr, result))
         rr.setDaemon(True)
         logger.debug('stderr reader: %r', rr)
         rr.start()
 
-        stdout = process.stdout # _wrap_output(process.stdout)
+        stdout = process.stdout
         dr = threading.Thread(target=self._read_data, args=(stdout, result))
         dr.setDaemon(True)
         logger.debug('stdout reader: %r', dr)
@@ -274,8 +254,8 @@ class GPG(object):
         # Handle a basic data call - pass data to GPG, handle the output
         # including status information. Garbage In, Garbage Out :)
         p = self._open_subprocess(args, passphrase is not None)
-        if not binary and not isinstance(file, BufferedReader):
-            stdin = _wrap_input(p.stdin)
+        if not binary:
+            stdin = codecs.getwriter(self.encoding)(p.stdin)
         else:
             stdin = p.stdin
         if passphrase:
@@ -313,7 +293,6 @@ class GPG(object):
         result = Sign(self.encoding)
         #We could use _handle_io here except for the fact that if the
         #passphrase is bad, gpg bails and you can't write the message.
-        #self._handle_io(args, _make_file(message), result, passphrase=passphrase)
         p = self._open_subprocess(args, passphrase is not None)
         try:
             stdin = p.stdin
@@ -434,7 +413,7 @@ class GPG(object):
         >>> import shutil
         >>> shutil.rmtree("keys")
         >>> gpg = GPG(gnupghome="keys")
-        >>> result = gpg.recv_key('pgp.mit.edu', '3FF0DB166A7476EA')
+        >>> result = gpg.recv_keys('pgp.mit.edu', '3FF0DB166A7476EA')
         >>> assert result
 
         """
@@ -538,8 +517,8 @@ class GPG(object):
         """
         args = ["--gen-key --batch"]
         result = GenKey()
-        f = _make_file(input)
-        self._handle_io(args, f, result)
+        f = _make_binary_stream(input, self.encoding)
+        self._handle_io(args, f, result, binary=True)
         f.close()
         return result
 
@@ -595,19 +574,23 @@ class GPG(object):
     #
     def encrypt_file(self, file, recipients, sign=None,
             always_trust=False, passphrase=None,
-            armor=True, output=None):
+            armor=True, output=None, symmetric=False):
         "Encrypt the message read from the file-like object 'file'"
         args = ['--encrypt']
+        if symmetric:
+            args = ['--symmetric']
+        else:
+            args = ['--encrypt']
+            if not _is_sequence(recipients):
+                recipients = (recipients,)
+            for recipient in recipients:
+                args.append('--recipient %s' % recipient)
         if armor:   # create ascii-armored output - set to False for binary output
             args.append('--armor')
         if output:  # write the output to a file with the specified name
             if os.path.exists(output):
                 os.remove(output) # to avoid overwrite confirmation message
             args.append('--output %s' % output)
-        if not _is_sequence(recipients):
-            recipients = (recipients,)
-        for recipient in recipients:
-            args.append('--recipient %s' % recipient)
         if sign:
             args.append("--sign --default-key %s" % sign)
         if always_trust:
@@ -640,27 +623,27 @@ class GPG(object):
         >>> result = gpg.encrypt("hello again",print1)
         >>> message = str(result)
         >>> result = gpg.decrypt(message)
-        >>> result.status
-        'need passphrase'
+        >>> result.status == 'need passphrase'
+        True
         >>> result = gpg.decrypt(message,passphrase='bar')
-        >>> result.status
-        'decryption failed'
+        >>> result.status in ('decryption failed', 'bad passphrase')
+        True
         >>> assert not result
         >>> result = gpg.decrypt(message,passphrase='foo')
-        >>> result.status
-        'decryption ok'
+        >>> result.status == 'decryption ok'
+        True
         >>> str(result)
         'hello again'
         >>> result = gpg.encrypt("signed hello",print2,sign=print1)
-        >>> result.status
-        'need passphrase'
+        >>> result.status == 'need passphrase'
+        True
         >>> result = gpg.encrypt("signed hello",print2,sign=print1,passphrase='foo')
-        >>> result.status
-        'encryption ok'
+        >>> result.status == 'encryption ok'
+        True
         >>> message = str(result)
         >>> result = gpg.decrypt(message)
-        >>> result.status
-        'decryption ok'
+        >>> result.status == 'decryption ok'
+        True
         >>> assert result.fingerprint == print1
 
         """
@@ -705,7 +688,7 @@ class Verify(object):
 
     def handle_status(self, key, value):
         if key in ("TRUST_UNDEFINED", "TRUST_NEVER", "TRUST_MARGINAL",
-                   "TRUST_FULLY", "TRUST_ULTIMATE", "RSA_OR_IDEA"):
+                   "TRUST_FULLY", "TRUST_ULTIMATE", "RSA_OR_IDEA", "NODATA"):
             pass
         elif key in ("PLAINTEXT", "PLAINTEXT_LENGTH"):
             pass
@@ -720,7 +703,7 @@ class Verify(object):
              self.creation_date,
              self.sig_timestamp,
              self.expire_timestamp) = value.split()[:4]
-             # may be different if signature is made with a subkey:
+            # may be different if signature is made with a subkey
             self.pubkey_fingerprint = value.split()[-1]
         elif key == "SIG_ID":
             (self.signature_id,
@@ -734,18 +717,14 @@ class Verify(object):
         elif key == "NO_PUBKEY":
             self.valid = False
             self.key_id = value
-        elif key in ("KEYEXPIRED", "SIGEXPIRED",):
+        elif key in ("KEYEXPIRED", "SIGEXPIRED"):
             # these are useless in verify, since they are spit out for any
             # pub/subkeys on the key, not just the one doing the signing.
             # if we want to check for signatures with expired key,
             # the relevant flag is EXPKEYSIG.
             pass
-        elif key == "EXPKEYSIG":
-            # signed with expired key
-            self.valid = False
-            self.key_id = value.split()[0]
-        elif key == "REVKEYSIG":
-            # signed with revoked key
+        elif key in ("EXPKEYSIG", "REVKEYSIG"):
+            # signed with expired or revoked key
             self.valid = False
             self.key_id = value.split()[0]
         else:
@@ -902,7 +881,9 @@ class Crypt(Verify):
 
     def handle_status(self, key, value):
         if key in ("ENC_TO", "USERID_HINT", "GOODMDC", "END_DECRYPTION",
-                   "BEGIN_SIGNING", "NO_SECKEY"):
+                   "BEGIN_SIGNING", "NO_SECKEY", "ERROR", "NODATA"):
+            # in the case of ERROR, this is because a more specific error
+            # message will have come first
             pass
         elif key in ("NEED_PASSPHRASE", "BAD_PASSPHRASE", "GOOD_PASSPHRASE",
                      "MISSING_PASSPHRASE", "DECRYPTION_FAILED"):
