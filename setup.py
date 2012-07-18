@@ -6,7 +6,7 @@ setup(name = "python-gnupg",
 management, encryption and signature functionality from Python programs. \
 It is intended for use with Python 2.4 or greater.",
     license="""Copyright (C) 2008-2011 by Vinay Sajip. All Rights Reserved. See LICENSE for license.""",
-    version = "0.2.7",
+    version = "0.2.8",
     author = "Vinay Sajip",
     author_email = "vinay_sajip@red-dove.com",
     maintainer = "Vinay Sajip",
